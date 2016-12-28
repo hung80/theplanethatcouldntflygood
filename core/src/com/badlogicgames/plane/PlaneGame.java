@@ -24,6 +24,7 @@ package com.badlogicgames.plane;
 
 import com.badlogic.gdx.ApplicationAdapter;
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.InputAdapter;
 import com.badlogic.gdx.audio.Music;
 import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.graphics.GL20;
@@ -39,7 +40,9 @@ import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Array;
+import com.badlogic.gdx.utils.TimeUtils;
 
 public class PlaneGame extends ApplicationAdapter {
 	private static final float PLANE_JUMP_IMPULSE = 350;
@@ -75,7 +78,11 @@ public class PlaneGame extends ApplicationAdapter {
 	
 	Music music;
 	Sound explode;
-	
+
+	int MOVEMENT_Y = 200;
+	int move = 0;
+	long lastTouch = 0;
+
 	@Override
 	public void create () {
 		shapeRenderer = new ShapeRenderer();
@@ -115,10 +122,27 @@ public class PlaneGame extends ApplicationAdapter {
 		explode = Gdx.audio.newSound(Gdx.files.internal("explode.wav"));
 		
 		resetWorld();
+
+		Gdx.input.setInputProcessor(new InputAdapter(){
+
+			@Override
+			public boolean touchDown(int screenX, int screenY, int pointer, int button) {
+				Vector3 v = camera.unproject(new Vector3(screenX, screenY, 0), 0, 0,
+					Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+
+				move += v.y > planePosition.y? MOVEMENT_Y: (-MOVEMENT_Y);
+
+				System.out.println("Click at (" + v.x + " ; " + v.y + ") and Plane at (" + planePosition.x + "; " + planePosition.y + ")");
+				lastTouch = TimeUtils.millis();
+				return true;
+			}
+
+		});
 	}
 	
 	private void resetWorld() {
 		score = 0;
+		move = 0;
 		groundOffsetX = 0;
 		planePosition.set(PLANE_START_X, PLANE_START_Y);
 		planeVelocity.set(0, 0);
@@ -134,8 +158,12 @@ public class PlaneGame extends ApplicationAdapter {
 	
 	private void updateWorld() {
 		float deltaTime = Gdx.graphics.getDeltaTime();
+		long now = TimeUtils.millis();
+		if (now - lastTouch > 300) {
+			move = 0;
+		}
 		planeStateTime += deltaTime;
-		
+
 		if(Gdx.input.justTouched()) {
 			if(gameState == GameState.Start) {
 				gameState = GameState.Running;
@@ -148,16 +176,22 @@ public class PlaneGame extends ApplicationAdapter {
 				resetWorld();
 			}
 		}
-			
+
 		if(gameState != GameState.Start) planeVelocity.add(gravity);
-		
+
+		planeVelocity.set(PLANE_VELOCITY_X,  move);
+		if (gameState == GameState.GameOver) {
+			planeVelocity.set(0, -350);
+		}
+
+		System.out.println(planeVelocity.x + "; " + planeVelocity.y);
 		planePosition.mulAdd(planeVelocity, deltaTime);
-		
-		camera.position.x = planePosition.x + 350;		
+
+		camera.position.x = planePosition.x + 350;
 		if(camera.position.x - groundOffsetX > ground.getRegionWidth() + 400) {
 			groundOffsetX += ground.getRegionWidth();
 		}
-				
+
 		rect1.set(planePosition.x + 20, planePosition.y, plane.getKeyFrames()[0].getRegionWidth() - 20, plane.getKeyFrames()[0].getRegionHeight());
 		for(Rock r: rocks) {
 			if(camera.position.x - r.position.x > 400 + r.image.getRegionWidth()) {
@@ -171,20 +205,20 @@ public class PlaneGame extends ApplicationAdapter {
 			if(rect1.overlaps(rect2)) {
 				if(gameState != GameState.GameOver) explode.play();
 				gameState = GameState.GameOver;
-				planeVelocity.x = 0;				
+				planeVelocity.x = 0;
 			}
 			if(r.position.x < planePosition.x && !r.counted) {
 				score++;
 				r.counted = true;
 			}
 		}
-		
-		if(planePosition.y < ground.getRegionHeight() - 20 || 
+
+		if(planePosition.y < ground.getRegionHeight() - 20 ||
 			planePosition.y + plane.getKeyFrames()[0].getRegionHeight() > 480 - ground.getRegionHeight() + 20) {
 			if(gameState != GameState.GameOver) explode.play();
 			gameState = GameState.GameOver;
 			planeVelocity.x = 0;
-		}		
+		}
 	}
 	
 	private void drawWorld() {
